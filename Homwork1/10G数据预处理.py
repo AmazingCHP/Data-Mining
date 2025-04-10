@@ -2,7 +2,6 @@ import pandas as pd
 import pyarrow.parquet as pq
 import os
 import json
-from sklearn.preprocessing import StandardScaler
 import gc
 import psutil
 from collections import defaultdict
@@ -74,9 +73,9 @@ def process_chunk(df, all_categories):
     Q1 = df['income'].quantile(0.25)
     Q3 = df['income'].quantile(0.75)
     IQR = Q3 - Q1
-    df = df[~((df['income'] < (Q1 - 1.5 * IQR)) | (df['income'] > (Q3 + 1.5 * IQR)))]
+    df = df[~((df['income'] < (Q1 - 1.5 * IQR)) | (df['income'] > (Q3 + 1.5 * IQR)))]  # 去除收入异常值
 
-    df = df[(df['credit_score'] >= 300) & (df['credit_score'] <= 850)]
+    df = df[(df['credit_score'] >= 300) & (df['credit_score'] <= 850)]  # 去除信用分异常值
 
     # 特征工程
     df['province'] = df['chinese_address'].str.extract(r'^(.*?省)')
@@ -84,37 +83,10 @@ def process_chunk(df, all_categories):
     df['day_of_week'] = df['timestamp'].dt.dayofweek
     df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
 
-    # 确保时间计算前时区一致
+    # 计算注册时间到当前时间的天数
     df['days_since_registration'] = (df['timestamp'] - df['registration_date']).dt.days
 
-    # 使用预定义的所有可能类别创建虚拟变量
-    for col, values in all_categories.items():
-        if col in df.columns:
-            # 为当前批次中不存在的类别添加空列
-            for val in values:
-                if val not in df[col].unique():
-                    df[col + '_' + str(val)] = 0
-
-            # 为存在的类别创建虚拟变量
-            dummies = pd.get_dummies(df[col], prefix=col)
-
-            # 确保列名一致
-            for val in values:
-                col_name = f"{col}_{val}"
-                if col_name not in dummies.columns:
-                    dummies[col_name] = 0
-
-            # 按预定义的顺序排序列
-            dummies = dummies[[f"{col}_{val}" for val in values]]
-
-            df = pd.concat([df.drop(col, axis=1), dummies], axis=1)
-
-    # 数值标准化
-    numeric_cols = ['age', 'income', 'average_price', 'items_count', 'credit_score', 'days_since_registration']
-    if len(df) > 0 and len(numeric_cols) > 0:  # 确保数据不为空且有数值列
-        scaler = StandardScaler()
-        df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
-
+    # 返回经过处理的数据
     return df
 
 
@@ -152,8 +124,8 @@ def process_file(input_file, output_dir, all_categories, chunk_size=50000):
 
 
 def main():
-    input_dir = '30G_data/'
-    output_dir = '30processed_data/'
+    input_dir = '10G_data/'
+    output_dir = 'processed_data/'
     os.makedirs(output_dir, exist_ok=True)
 
     # 预扫描获取所有分类变量的可能取值
